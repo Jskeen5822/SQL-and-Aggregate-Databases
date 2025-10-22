@@ -13,6 +13,8 @@ class Database:
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self._configure()
+        # Ensure schema exists so ad-hoc usage (e.g., one-liners) works without manual calls
+        self.init_schema()
 
     def _configure(self) -> None:
         cur = self.conn.cursor()

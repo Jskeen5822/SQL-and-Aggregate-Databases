@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 from typing import List, Dict, Any, Tuple
-
 from .config import Config
 from .db import Database
 from .github_client import GitHubClient
@@ -38,12 +37,12 @@ def parse_args() -> Tuple[Config, bool]:
     if not tgt:
         p.error("You must provide --user or --org (or set GITHUB_TARGET and GITHUB_TARGET_TYPE)")
 
-    token = args.token or env_cfg.token
+    token = (args.token.strip() if isinstance(args.token, str) else None) or env_cfg.token
 
     return Config(
         target=tgt,
         target_type=tgt_type,
-        token=token,
+    token=token,
         db_path=args.db or env_cfg.db_path,
         include_contributors=bool(args.include_contributors or env_cfg.include_contributors),
         concurrency=int(args.concurrency or env_cfg.concurrency),

@@ -20,6 +20,8 @@ class Config:
         target = os.getenv("GITHUB_TARGET", "")
         target_type = os.getenv("GITHUB_TARGET_TYPE", "user")
         token = os.getenv("GITHUB_TOKEN")
+        if token is not None:
+            token = token.strip()
         db_path = os.getenv("DB_PATH", "data.db")
         include_contributors = os.getenv("INCLUDE_CONTRIBUTORS", "0").lower() in {"1", "true", "yes"}
         concurrency = int(os.getenv("CONCURRENCY", "10"))

@@ -14,7 +14,8 @@ class RateLimitError(Exception):
 
 class GitHubClient:
     def __init__(self, token: Optional[str] = None, concurrency: int = 10, timeout: int = 30) -> None:
-        self.token = token
+        # Normalize token to avoid CR/LF in headers
+        self.token = token.strip() if isinstance(token, str) else None
         self.semaphore = asyncio.Semaphore(concurrency)
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: Optional[aiohttp.ClientSession] = None
