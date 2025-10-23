@@ -12,7 +12,12 @@ from fetch_repos.aggregator import compute_aggregates
 
 def main():
     db_path = sys.argv[1] if len(sys.argv) > 1 else os.getenv("DB_PATH", "data.db")
-    db = Database(db_path)
+    namespace = None
+    if len(sys.argv) > 2:
+        namespace = sys.argv[2]
+    else:
+        namespace = os.getenv("DB_NAMESPACE")
+    db = Database(db_path, namespace=namespace)
     compute_aggregates(db)
 
     cur = db.conn.cursor()

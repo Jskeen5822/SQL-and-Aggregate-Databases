@@ -50,8 +50,14 @@ def parse_args() -> Tuple[Config, bool]:
     ), bool(args.skip_aggregates)
 
 
+def _namespace_from_target(target: str) -> str:
+    import re
+    return re.sub(r"[^0-9A-Za-z_]+", "_", target).strip("_").lower()[:40] or "default"
+
+
 async def fetch_and_store(cfg: Config, skip_aggregates: bool = False) -> None:
-    db = Database(cfg.db_path)
+    ns = _namespace_from_target(cfg.target)
+    db = Database(cfg.db_path, namespace=ns)
     db.init_schema()
 
     async with GitHubClient(token=cfg.token, concurrency=cfg.concurrency) as gh:
@@ -90,14 +96,16 @@ async def fetch_and_store(cfg: Config, skip_aggregates: bool = False) -> None:
 
         # Split and save
         lang_items = [{"repo_id": it["repo_id"], "languages": it["languages"]} for it in results]
-        db.upsert_languages(lang_items)
+        if lang_items:
+            db.upsert_languages(lang_items)
 
         if cfg.include_contributors:
             contrib_items = [
                 {"repo_id": it["repo_id"], "contributors": it.get("contributors", [])}
                 for it in results
             ]
-            db.upsert_contributors(contrib_items)
+            if contrib_items:
+                db.upsert_contributors(contrib_items)
 
         # Compute aggregates
         if not skip_aggregates:

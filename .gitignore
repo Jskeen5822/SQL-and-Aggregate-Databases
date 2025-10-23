@@ -24,6 +24,7 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 /data.db
+*.csv
 
 # Logs
 *.log

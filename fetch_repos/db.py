@@ -7,14 +7,40 @@ import json
 from datetime import datetime, timezone
 
 
+def _sanitize_namespace(ns: str | None) -> str | None:
+    if not ns:
+        return None
+    # allow only alphanumerics and underscore, lower-cased, max 40 chars
+    import re
+    cleaned = re.sub(r"[^0-9A-Za-z_]+", "_", ns).strip("_").lower()
+    return cleaned[:40] if cleaned else None
+
+
 class Database:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, namespace: str | None = None) -> None:
         self.path = path
+        self.namespace = _sanitize_namespace(namespace)
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self._configure()
         # Ensure schema exists so ad-hoc usage (e.g., one-liners) works without manual calls
         self.init_schema()
+
+    @property
+    def repositories_table(self) -> str:
+        return f"repositories_{self.namespace}" if self.namespace else "repositories"
+
+    @property
+    def languages_table(self) -> str:
+        return f"languages_{self.namespace}" if self.namespace else "languages"
+
+    @property
+    def contributors_table(self) -> str:
+        return f"contributors_{self.namespace}" if self.namespace else "contributors"
+
+    @property
+    def aggregates_table(self) -> str:
+        return f"aggregates_{self.namespace}" if self.namespace else "aggregates"
 
     def _configure(self) -> None:
         cur = self.conn.cursor()
@@ -38,8 +64,8 @@ class Database:
     def init_schema(self) -> None:
         cur = self.conn.cursor()
         cur.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS repositories (
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.repositories_table} (
                 repo_id INTEGER PRIMARY KEY,
                 name TEXT,
                 full_name TEXT,
@@ -62,26 +88,26 @@ class Database:
                 disabled INTEGER
             );
 
-            CREATE INDEX IF NOT EXISTS idx_repositories_language ON repositories(language);
-            CREATE INDEX IF NOT EXISTS idx_repositories_stars ON repositories(stargazers_count DESC);
+            CREATE INDEX IF NOT EXISTS idx_{self.repositories_table}_language ON {self.repositories_table}(language);
+            CREATE INDEX IF NOT EXISTS idx_{self.repositories_table}_stars ON {self.repositories_table}(stargazers_count DESC);
 
-            CREATE TABLE IF NOT EXISTS languages (
+            CREATE TABLE IF NOT EXISTS {self.languages_table} (
                 repo_id INTEGER,
                 language TEXT,
                 bytes INTEGER,
                 PRIMARY KEY (repo_id, language),
-                FOREIGN KEY (repo_id) REFERENCES repositories(repo_id) ON DELETE CASCADE
+                FOREIGN KEY (repo_id) REFERENCES {self.repositories_table}(repo_id) ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS contributors (
+            CREATE TABLE IF NOT EXISTS {self.contributors_table} (
                 repo_id INTEGER,
                 login TEXT,
                 contributions INTEGER,
                 PRIMARY KEY (repo_id, login),
-                FOREIGN KEY (repo_id) REFERENCES repositories(repo_id) ON DELETE CASCADE
+                FOREIGN KEY (repo_id) REFERENCES {self.repositories_table}(repo_id) ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS aggregates (
+            CREATE TABLE IF NOT EXISTS {self.aggregates_table} (
                 metric TEXT,
                 key TEXT,
                 value REAL,
@@ -122,8 +148,8 @@ class Database:
             )
         with self.transaction():
             self.conn.executemany(
-                """
-                INSERT INTO repositories (
+                f"""
+                INSERT INTO {self.repositories_table} (
                     repo_id,name,full_name,owner_login,private,fork,html_url,description,
                     created_at,updated_at,pushed_at,stargazers_count,watchers_count,forks_count,
                     open_issues_count,language,size,license,archived,disabled
@@ -161,8 +187,8 @@ class Database:
                 rows.append((repo_id, lang, int(b)))
         with self.transaction():
             self.conn.executemany(
-                """
-                INSERT INTO languages(repo_id, language, bytes) VALUES (?,?,?)
+                f"""
+                INSERT INTO {self.languages_table}(repo_id, language, bytes) VALUES (?,?,?)
                 ON CONFLICT(repo_id, language) DO UPDATE SET bytes=excluded.bytes;
                 """,
                 rows,
@@ -176,8 +202,8 @@ class Database:
                 rows.append((repo_id, c.get("login"), int(c.get("contributions", 0))))
         with self.transaction():
             self.conn.executemany(
-                """
-                INSERT INTO contributors(repo_id, login, contributions) VALUES (?,?,?)
+                f"""
+                INSERT INTO {self.contributors_table}(repo_id, login, contributions) VALUES (?,?,?)
                 ON CONFLICT(repo_id, login) DO UPDATE SET contributions=excluded.contributions;
                 """,
                 rows,
@@ -188,8 +214,8 @@ class Database:
         extra_json = json.dumps(extra) if extra is not None else None
         with self.transaction():
             self.conn.execute(
-                """
-                INSERT INTO aggregates(metric, key, value, computed_at, extra_json)
+                f"""
+                INSERT INTO {self.aggregates_table}(metric, key, value, computed_at, extra_json)
                 VALUES (?,?,?,?,?)
                 ON CONFLICT(metric, key) DO UPDATE SET
                     value=excluded.value,

@@ -13,20 +13,20 @@ def compute_aggregates(db: Database) -> None:
     cur = db.conn.cursor()
 
     # total_repos
-    cur.execute("SELECT COUNT(*) FROM repositories;")
+    cur.execute(f"SELECT COUNT(*) FROM {db.repositories_table};")
     total_repos = cur.fetchone()[0]
     db.upsert_aggregate("total_repos", None, float(total_repos))
 
     # total_stars
-    cur.execute("SELECT COALESCE(SUM(stargazers_count),0) FROM repositories;")
+    cur.execute(f"SELECT COALESCE(SUM(stargazers_count),0) FROM {db.repositories_table};")
     total_stars = cur.fetchone()[0] or 0
     db.upsert_aggregate("total_stars", None, float(total_stars))
 
     # stars_by_language
     cur.execute(
-        """
+        f"""
         SELECT language, COALESCE(SUM(stargazers_count),0) AS stars
-        FROM repositories
+        FROM {db.repositories_table}
         WHERE language IS NOT NULL
         GROUP BY language
         ORDER BY stars DESC;
@@ -37,9 +37,9 @@ def compute_aggregates(db: Database) -> None:
 
     # forks_by_language
     cur.execute(
-        """
+        f"""
         SELECT language, COALESCE(SUM(forks_count),0) AS forks
-        FROM repositories
+        FROM {db.repositories_table}
         WHERE language IS NOT NULL
         GROUP BY language
         ORDER BY forks DESC;
@@ -50,9 +50,9 @@ def compute_aggregates(db: Database) -> None:
 
     # top_repos_by_stars (top 10)
     cur.execute(
-        """
+        f"""
         SELECT full_name, stargazers_count
-        FROM repositories
+        FROM {db.repositories_table}
         ORDER BY stargazers_count DESC, full_name ASC
         LIMIT 10;
         """
