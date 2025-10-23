@@ -93,3 +93,29 @@ class GitHubClient:
     async def list_repo_contributors(self, owner: str, repo: str) -> List[Dict[str, Any]]:
         url = f"{API_ROOT}/repos/{owner}/{repo}/contributors"
         return await self._paginate(url)
+
+    async def get_repo_commit_activity(self, owner: str, repo: str) -> List[Dict[str, Any]]:
+        """
+        Returns last 52 weeks of commit activity.
+        API may return 202 if the data is being generated; retry a few times.
+        """
+        assert self._session is not None
+        url = f"{API_ROOT}/repos/{owner}/{repo}/stats/commit_activity"
+        backoff = 1.0
+        for _ in range(6):
+            async with self.semaphore:
+                async with self._session.get(url) as resp:
+                    if resp.status == 202:
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, 16)
+                        continue
+                    resp.raise_for_status()
+                    data = await resp.json()
+                    if isinstance(data, list):
+                        return data
+                    return []
+        return []
+
+    async def list_repo_pull_requests(self, owner: str, repo: str, state: str = "all") -> List[Dict[str, Any]]:
+        url = f"{API_ROOT}/repos/{owner}/{repo}/pulls"
+        return await self._paginate(url, params={"state": state, "sort": "created", "direction": "desc"})

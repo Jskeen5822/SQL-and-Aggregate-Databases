@@ -67,6 +67,35 @@ def main() -> None:
     export_top_repos(con, os.path.join(out_dir, "top_repos.csv"), table)
     export_stars_by_language(con, os.path.join(out_dir, "stars_by_language.csv"), table)
 
+    # Optional DORA exports if tables exist
+    commit_table = f"commit_activity_{namespace}" if namespace else "commit_activity"
+    pr_table = f"pull_requests_{namespace}" if namespace else "pull_requests"
+    if commit_table in existing:
+        # export commits by week aggregated across repos (with repo names)
+        sql = f"""
+            SELECT r.full_name, c.week_start, c.total
+            FROM {table} r
+            JOIN {commit_table} c ON r.repo_id=c.repo_id
+            ORDER BY c.week_start ASC, r.full_name ASC;
+        """
+        rows = con.execute(sql).fetchall()
+        with open(os.path.join(out_dir, "commit_activity.csv"), "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["full_name", "week_start", "commits"])
+            w.writerows(rows)
+    if pr_table in existing:
+        sql = f"""
+            SELECT r.full_name, p.number, p.state, p.created_at, p.merged_at, p.closed_at
+            FROM {table} r
+            JOIN {pr_table} p ON r.repo_id=p.repo_id
+            ORDER BY p.created_at DESC;
+        """
+        rows = con.execute(sql).fetchall()
+        with open(os.path.join(out_dir, "pull_requests.csv"), "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["full_name", "number", "state", "created_at", "merged_at", "closed_at"])
+            w.writerows(rows)
+
     print(f"Wrote: {os.path.join(out_dir, 'top_repos.csv')} and {os.path.join(out_dir, 'stars_by_language.csv')}")
 
 

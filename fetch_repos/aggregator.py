@@ -59,3 +59,37 @@ def compute_aggregates(db: Database) -> None:
     )
     top = [{"full_name": r[0], "stars": int(r[1])} for r in cur.fetchall()]
     db.upsert_aggregate("top_repos_by_stars", None, float(len(top)), extra = top)
+
+    # Optional DORA aggregates if DORA tables exist
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {r[0] for r in cur.fetchall()}
+    if db.commit_activity_table in tables:
+        # Sum commits per week across all repos in this namespace (limit to last 26 weeks for brevity)
+        cur.execute(
+            f"""
+            SELECT week_start, SUM(total) as commits
+            FROM {db.commit_activity_table}
+            GROUP BY week_start
+            ORDER BY week_start DESC
+            LIMIT 26;
+            """
+        )
+        rows = cur.fetchall()
+        series = [
+            {"week_start": r[0], "commits": int(r[1])}
+            for r in rows
+        ][::-1]  # oldest first
+        db.upsert_aggregate("dora_commits_by_week", None, float(len(series)), extra=series)
+
+    if db.pull_requests_table in tables:
+        # PR counts by state (total)
+        cur.execute(
+            f"""
+            SELECT state, COUNT(*)
+            FROM {db.pull_requests_table}
+            GROUP BY state;
+            """
+        )
+        totals = {r[0] or "unknown": int(r[1]) for r in cur.fetchall()}
+        total_all = sum(totals.values())
+        db.upsert_aggregate("dora_prs_total", None, float(total_all), extra=totals)

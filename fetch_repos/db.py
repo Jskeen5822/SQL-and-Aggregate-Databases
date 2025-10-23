@@ -42,6 +42,14 @@ class Database:
     def aggregates_table(self) -> str:
         return f"aggregates_{self.namespace}" if self.namespace else "aggregates"
 
+    @property
+    def commit_activity_table(self) -> str:
+        return f"commit_activity_{self.namespace}" if self.namespace else "commit_activity"
+
+    @property
+    def pull_requests_table(self) -> str:
+        return f"pull_requests_{self.namespace}" if self.namespace else "pull_requests"
+
     def _configure(self) -> None:
         cur = self.conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL;")
@@ -114,6 +122,26 @@ class Database:
                 computed_at TEXT,
                 extra_json TEXT,
                 PRIMARY KEY (metric, key)
+            );
+
+            -- DORA tables
+            CREATE TABLE IF NOT EXISTS {self.commit_activity_table} (
+                repo_id INTEGER,
+                week_start TEXT,
+                total INTEGER,
+                PRIMARY KEY (repo_id, week_start),
+                FOREIGN KEY (repo_id) REFERENCES {self.repositories_table}(repo_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS {self.pull_requests_table} (
+                repo_id INTEGER,
+                number INTEGER,
+                state TEXT,
+                created_at TEXT,
+                merged_at TEXT,
+                closed_at TEXT,
+                PRIMARY KEY (repo_id, number),
+                FOREIGN KEY (repo_id) REFERENCES {self.repositories_table}(repo_id) ON DELETE CASCADE
             );
             """
         )
@@ -224,4 +252,42 @@ class Database:
                 ;
                 """,
                 (metric, key, float(value), now, extra_json),
+            )
+
+    def upsert_commit_activity(self, items: Iterable[Dict[str, Any]]) -> None:
+        rows = []
+        for it in items:
+            rows.append((it["repo_id"], it["week_start"], int(it["total"])) )
+        if not rows:
+            return
+        with self.transaction():
+            self.conn.executemany(
+                f"""
+                INSERT INTO {self.commit_activity_table}(repo_id, week_start, total) VALUES (?,?,?)
+                ON CONFLICT(repo_id, week_start) DO UPDATE SET total=excluded.total;
+                """,
+                rows,
+            )
+
+    def upsert_pull_requests(self, items: Iterable[Dict[str, Any]]) -> None:
+        rows = []
+        for it in items:
+            rows.append((
+                it["repo_id"], int(it["number"]), it.get("state"),
+                it.get("created_at"), it.get("merged_at"), it.get("closed_at")
+            ))
+        if not rows:
+            return
+        with self.transaction():
+            self.conn.executemany(
+                f"""
+                INSERT INTO {self.pull_requests_table}(repo_id, number, state, created_at, merged_at, closed_at)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT(repo_id, number) DO UPDATE SET
+                    state=excluded.state,
+                    created_at=excluded.created_at,
+                    merged_at=excluded.merged_at,
+                    closed_at=excluded.closed_at;
+                """,
+                rows,
             )
